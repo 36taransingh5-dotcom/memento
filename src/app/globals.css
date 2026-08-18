@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+/*
+ * Memento design tokens.
+ *
+ * Dark, near-neutral, one restrained accent. The palette does the work that a
+ * decorative flourish would otherwise be asked to do: decision states are the
+ * only saturated colour on the page, so a REJECT reads instantly and everything
+ * else stays quiet.
+ */
+
+@theme {
+  --color-canvas: #08090a;
+  --color-surface: #0e1012;
+  --color-surface-raised: #14171a;
+  --color-surface-hover: #191d21;
+
+  --color-line: #1f2429;
+  --color-line-strong: #2b3238;
+
+  --color-ink: #e8eaed;
+  --color-ink-muted: #949ca5;
+  --color-ink-subtle: #6b737c;
+
+  --color-accent: #2dd4bf;
+  --color-accent-dim: #134e4a;
+  --color-accent-ink: #5eead4;
+
+  /* Decision states */
+  --color-approve: #34d399;
+  --color-approve-bg: #052e21;
+  --color-reject: #fb7185;
+  --color-reject-bg: #3f1220;
+  --color-inform: #fbbf24;
+  --color-inform-bg: #3a2708;
+  --color-review: #a78bfa;
+  --color-review-bg: #2a1f4d;
+  --color-approval: #60a5fa;
+  --color-approval-bg: #10254a;
+
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas,
+    monospace;
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headings read tighter than body copy — the Linear/Vercel convention. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+::selection {
+  background: var(--color-accent-dim);
+  color: var(--color-accent-ink);
+}
+
+/* Scrollbars: present but recessive. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+  border: 3px solid var(--color-canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-subtle);
+}
+
+@keyframes memento-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-up {
+  animation: memento-fade-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes memento-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-pulse-dot {
+  animation: memento-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-pulse-dot {
+    animation: none;
+  }
+}

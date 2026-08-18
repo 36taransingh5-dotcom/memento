@@ -1,0 +1,31 @@
+# Local CockroachDB for Memento development.
+#
+# This is the *development* datastore only. In production Memento points at a
+# CockroachDB Cloud cluster via DATABASE_URL — nothing else in the app changes.
+#
+#   docker compose up -d
+#   npm run db:migrate && npm run db:seed
+#
+# The DB Console is available at http://localhost:8081.
+
+services:
+  cockroach:
+    image: cockroachdb/cockroach:latest-v25.4
+    container_name: memento-cockroach
+    # Single-node insecure is appropriate for local development only.
+    # `--advertise-addr` keeps node identity stable across container restarts.
+    command: start-single-node --insecure --advertise-addr=localhost
+    ports:
+      - "26257:26257" # SQL
+      - "8081:8080" # DB Console
+    volumes:
+      - memento-crdb-data:/cockroach/cockroach-data
+    healthcheck:
+      test: ["CMD", "cockroach", "sql", "--insecure", "-e", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  memento-crdb-data:

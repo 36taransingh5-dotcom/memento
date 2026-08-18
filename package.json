@@ -1,0 +1,51 @@
+{
+  "name": "memento",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An autonomous AI operations agent with persistent organizational memory, built on CockroachDB and Amazon Bedrock.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port ${PORT:-3000}",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:up": "docker compose up -d && tsx scripts/wait-for-db.ts",
+    "db:down": "docker compose down",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:reset": "tsx scripts/reset.ts",
+    "db:setup": "npm run db:up && npm run db:migrate && npm run db:seed",
+    "db:health": "tsx scripts/health.ts",
+    "demo": "tsx scripts/demo.ts",
+    "mcp:config": "tsx scripts/mcp-config.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.32.4",
+    "@anthropic-ai/sdk": "^0.117.1",
+    "@aws-sdk/client-bedrock-runtime": "^3.734.0",
+    "next": "^15.1.6",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.7",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^15.1.6",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.4"
+  }
+}
