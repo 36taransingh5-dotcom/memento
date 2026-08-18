@@ -20,11 +20,17 @@ Memento is a standard Next.js `standalone` build with no stateful local storage 
 
 ## 2. Amazon Bedrock model access
 
-In the Bedrock console, request access to:
-- An Anthropic Claude model (`BEDROCK_MODEL_ID`, e.g. `anthropic.claude-sonnet-5`)
-- `amazon.titan-embed-text-v2:0`
+In the Bedrock console, open a model (Model catalog → the model card → Playground) in the region you'll deploy to. AWS retired the old checkbox-based "Model access" request page — serverless models now activate on first successful invoke, account-wide.
 
-in the region you'll deploy to (`AWS_REGION`). Approval is usually immediate for these models.
+Three things that will trip you up on a fresh AWS account, in the order you're likely to hit them:
+
+1. **Billing.** Bedrock model invocation (any model) requires a valid payment method on the AWS account, checked independently of whether the model itself is "available." A missing/declined card surfaces as `INVALID_PAYMENT_INSTRUMENT` on invoke — fix it under **Billing → Payment preferences**, then wait ~5 minutes.
+2. **The newest Claude generation needs AWS Sales approval.** Sonnet 5, Opus 4.8, and Opus 4.7 are served via Bedrock's Mantle endpoint and return `permission_error` ("not available for this account") on a standard self-service account, even with billing fixed and even after a successful console Playground click-through. This isn't a self-service toggle — see the message for AWS Sales contact details. `BEDROCK_MODEL_ID` therefore defaults to the newest *generally available* model instead (see `.env.example`).
+3. **On-demand invocation needs an inference-profile ID.** The bare model ID that works in the console Playground (`anthropic.claude-sonnet-4-5-20250929-v1:0`) 400s over the API with "on-demand throughput isn't supported." Prefix it with the region-group code — `us.anthropic.claude-sonnet-4-5-20250929-v1:0` from a US region — which is what actually needs `bedrock:InvokeModel` permission.
+
+For the embedding model, same idea: try `amazon.titan-embed-text-v2:0` in the Playground once billing is fixed; it typically doesn't need the Mantle-gated approval that the newest Claude models do.
+
+If none of the above resolves it before a deadline, Memento degrades gracefully — the deterministic policy engine still produces real, auditable decisions with no LLM reasoning layer, and semantic memory falls back to a local lexical hash. Nothing crashes; `ALLOW_DEGRADED_AI=true` (the default) is what makes that safe.
 
 ## 3. IAM permissions
 

@@ -1,4 +1,4 @@
-import { AnthropicBedrockMantle } from "@anthropic-ai/bedrock-sdk";
+import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import type Anthropic from "@anthropic-ai/sdk";
 import { recordAuditEvent } from "@/lib/db/repositories/audit";
 import {
@@ -282,10 +282,18 @@ function isBedrockConfigured(): boolean {
   );
 }
 
-let bedrockClient: AnthropicBedrockMantle | null = null;
+let bedrockClient: AnthropicBedrock | null = null;
 
-function client(): AnthropicBedrockMantle {
-  bedrockClient ??= new AnthropicBedrockMantle({ awsRegion: env().AWS_REGION });
+/**
+ * The Mantle endpoint (`AnthropicBedrockMantle`) only serves the newest Claude
+ * generation, and those models are gated behind an AWS Sales approval process
+ * on standard accounts. The legacy `AnthropicBedrock` client serves the same
+ * Messages API against models available via on-demand cross-region inference
+ * profiles (`BEDROCK_MODEL_ID` values like `us.anthropic.claude-*`), which is
+ * what's actually reachable on a self-service AWS account.
+ */
+function client(): AnthropicBedrock {
+  bedrockClient ??= new AnthropicBedrock({ awsRegion: env().AWS_REGION });
   return bedrockClient;
 }
 
@@ -313,10 +321,12 @@ async function runBedrockLoop(
       model: env().BEDROCK_MODEL_ID,
       max_tokens: MAX_TOKENS,
       system: systemPrompt(state.requester, new Date()),
-      // Adaptive thinking with the default `display: "omitted"`: the model
-      // reasons, but the raw chain of thought is never returned or stored.
-      thinking: { type: "adaptive" },
-      output_config: { effort: env().BEDROCK_EFFORT },
+      // Adaptive thinking and `output_config.effort` are Claude 4.6+-only —
+      // BEDROCK_MODEL_ID may point at an older model this account actually
+      // has Bedrock access to (e.g. Claude Sonnet 4.5), which rejects both
+      // as unrecognized fields. Omitted rather than made conditional on
+      // model family: whichever model is configured, plain tool-calling
+      // works everywhere and is enough for this agent's decisions.
       tools: toolDefinitions(),
       messages,
     });
@@ -578,7 +588,16 @@ const REUSE_CONFIRMATION =
  * too. This fires either when the request was explicitly typed as a reuse, or
  * when a follow-up message on an open request reads as agreement to the
  * reuse the agent already offered. With Bedrock available the model normally
- * calls `reserve_existing_resource` itself and this is a no-op.
+ * calls `reserve_existing_resource` itself, in which case only the verdict
+ * correction below runs.
+ *
+ * Either way — deterministic floor or model tool call — `evaluate_policy` was
+ * run against a snapshot taken *before* the reuse happened, so its
+ * `reuse-before-provision` verdict is now stale: the thing it was asking for
+ * has since occurred. `reconcile()` doesn't know that, so left uncorrected it
+ * would override even a model that got this right, downgrading a correct
+ * APPROVE back to REQUEST_INFORMATION. Whoever performed the reuse, the fix
+ * is the same: fold the outcome back into the evaluation.
  */
 async function fulfilReuseIfRequested(
   state: AgentRunState,
@@ -586,42 +605,49 @@ async function fulfilReuseIfRequested(
 ): Promise<void> {
   const facts = state.requestFacts;
   if (!facts || !facts.resourceKind) return;
-  if (state.actions.some((a) => a.action === "resource.reused")) return;
 
-  const explicitReuseType = facts.requestType === "resource_reuse";
-  const confirmedFollowUp =
-    REUSE_CONFIRMATION.test(message) &&
-    state.policyEvaluation?.triggered.some(
-      (t) => t.key === "reuse-before-provision",
+  let target: { id: string; name: string } | undefined;
+
+  if (state.actions.some((a) => a.action === "resource.reused")) {
+    // Already reused — by the model's own tool call. Nothing to do but
+    // correct the stale verdict below.
+  } else {
+    const explicitReuseType = facts.requestType === "resource_reuse";
+    const confirmedFollowUp =
+      REUSE_CONFIRMATION.test(message) &&
+      state.policyEvaluation?.triggered.some(
+        (t) => t.key === "reuse-before-provision",
+      );
+    if (!explicitReuseType && !confirmedFollowUp) return;
+
+    const evaluation = state.policyEvaluation;
+    if (evaluation?.verdict === "REJECT" && evaluation.mandatory) return;
+
+    const candidates = await findReusableResources(
+      state.requester.team_id,
+      facts.resourceKind,
     );
-  if (!explicitReuseType && !confirmedFollowUp) return;
+    target = candidates[0];
+    if (!target) return;
 
-  const evaluation = state.policyEvaluation;
-  if (evaluation?.verdict === "REJECT" && evaluation.mandatory) return;
-
-  const candidates = await findReusableResources(
-    state.requester.team_id,
-    facts.resourceKind,
-  );
-  const target = candidates[0];
-  if (!target) return;
-
-  const result = await runTool(
-    state,
-    "reserve_existing_resource",
-    {
-      resource_id: target.id,
-      purpose: facts.title,
-      duration_days: facts.durationDays,
-    },
-    "deterministic-floor",
-  );
-  if (result.isError) return;
+    const result = await runTool(
+      state,
+      "reserve_existing_resource",
+      {
+        resource_id: target.id,
+        purpose: facts.title,
+        duration_days: facts.durationDays,
+      },
+      "deterministic-floor",
+    );
+    if (result.isError) return;
+  }
 
   // The reuse this policy was asking about has now happened — the request is
   // resolved, not still pending information. Fold that outcome back into the
   // evaluation so reconcile() lands on APPROVE rather than repeating the
   // original REQUEST_INFORMATION verdict.
+  const evaluation = state.policyEvaluation;
   state.policyEvaluation = {
     ...(evaluation ?? {
       triggered: [],
@@ -633,7 +659,9 @@ async function fulfilReuseIfRequested(
     }),
     verdict: "APPROVE",
     mandatory: true,
-    nextAction: `Confirm ${target.name} is allocated and no new capacity is needed.`,
+    nextAction: target
+      ? `Confirm ${target.name} is allocated and no new capacity is needed.`
+      : "Confirm the reused resource is allocated and no new capacity is needed.",
   };
 }
 
