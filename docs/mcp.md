@@ -8,30 +8,33 @@ The agent's tools (`src/lib/agent/tools.ts`) go through the app's typed reposito
 
 ## Setup
 
-1. In **CockroachDB Cloud Console**, open your cluster → **MCP Server** tab.
-2. Copy the generated endpoint URL and API key.
-3. Add them to `.env.local`:
+1. In **CockroachDB Cloud Console**, open your cluster → **Connect**. It shows a ready-to-run command:
    ```bash
-   CRDB_MCP_URL=<endpoint from the console>
-   CRDB_MCP_API_KEY=<api key from the console>
+   claude mcp add cockroachdb-cloud https://cockroachlabs.cloud/mcp \
+     --transport http --header "mcp-cluster-id: <your-cluster-id>"
    ```
-4. Generate the MCP client config:
+   Auth is handled by CockroachDB Cloud via OAuth on first connect — there's no separate API key to manage or rotate.
+2. Add the cluster ID to `.env.local`:
+   ```bash
+   CRDB_MCP_CLUSTER_ID=<your-cluster-id>
+   ```
+3. Generate the MCP client config:
    ```bash
    npm run mcp:config
    ```
-   This writes `.mcp.json` (gitignored — it carries a credential) in the shape Claude Code and other MCP clients expect:
+   This writes `.mcp.json` (gitignored — kept project-local rather than hardcoding a cluster into a public repo) in the shape Claude Code and other MCP clients expect:
    ```json
    {
      "mcpServers": {
-       "cockroachdb": {
+       "cockroachdb-cloud": {
          "type": "http",
-         "url": "<CRDB_MCP_URL>",
-         "headers": { "Authorization": "Bearer <CRDB_MCP_API_KEY>" }
+         "url": "https://cockroachlabs.cloud/mcp",
+         "headers": { "mcp-cluster-id": "<CRDB_MCP_CLUSTER_ID>" }
        }
      }
    }
    ```
-5. Restart your MCP client to pick up the new server.
+4. Restart your MCP client to pick up the new server. The first tool call triggers a browser OAuth prompt — this step can't be automated in a non-interactive session, so it has to happen once, interactively, per machine.
 
 ## What it's good for
 
@@ -44,4 +47,4 @@ The managed server exposes read-only tools by default (schema inspection, `EXPLA
 
 ## Security
 
-Read-only mode is the default; only opt into write access if you specifically need the assistant to create test data. The API key in `.mcp.json` is cluster-scoped — treat it like any other database credential and never commit it (the file is in `.gitignore` for this reason).
+Read-only mode is the default; only opt into write access if you specifically need the assistant to create test data. `.mcp.json` doesn't carry a bearer credential — access is gated by an OAuth session tied to your CockroachDB Cloud account — but it's still kept out of the repo (`.gitignore`) since it names a specific cluster.

@@ -10,21 +10,25 @@ loadEnv();
  *
  * This is developer and operator tooling, not part of the agent's decision
  * loop — see docs/mcp.md for why that separation is deliberate. The generated
- * file is gitignored because it carries a cluster credential.
+ * file is gitignored: while a cluster ID alone isn't a bearer credential,
+ * treating it as project-local config avoids hardcoding a specific cluster
+ * into a public repo. Auth itself is handled by CockroachDB Cloud via OAuth
+ * on first connect, not a static API key — there is nothing else to inject.
  */
 
 function main(): void {
-  const url = process.env["CRDB_MCP_URL"];
-  const apiKey = process.env["CRDB_MCP_API_KEY"];
+  const clusterId = process.env["CRDB_MCP_CLUSTER_ID"];
 
   heading("CockroachDB Managed MCP Server");
 
-  if (!url) {
-    warn("CRDB_MCP_URL is not set.");
+  if (!clusterId) {
+    warn("CRDB_MCP_CLUSTER_ID is not set.");
     info(
-      "In the CockroachDB Cloud Console open your cluster, go to the MCP Server tab, and copy the\n" +
-        "  endpoint and API key into .env.local as CRDB_MCP_URL and CRDB_MCP_API_KEY. Then re-run\n" +
-        "  `npm run mcp:config`. See docs/mcp.md.",
+      "Run `claude mcp add cockroachdb-cloud https://cockroachlabs.cloud/mcp \\\n" +
+        '  --transport http --header "mcp-cluster-id: <your-cluster-id>"` — CockroachDB Cloud\n' +
+        "  Console shows this exact command under your cluster's Connect panel. Copy the\n" +
+        "  cluster ID into .env.local as CRDB_MCP_CLUSTER_ID, then re-run `npm run mcp:config`.\n" +
+        "  See docs/mcp.md.",
     );
     process.exitCode = 1;
     return;
@@ -32,10 +36,10 @@ function main(): void {
 
   const config = {
     mcpServers: {
-      cockroachdb: {
+      "cockroachdb-cloud": {
         type: "http",
-        url,
-        ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
+        url: "https://cockroachlabs.cloud/mcp",
+        headers: { "mcp-cluster-id": clusterId },
       },
     },
   };
@@ -44,10 +48,10 @@ function main(): void {
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
   ok(`Wrote ${path}`);
-  if (!apiKey) {
-    warn("CRDB_MCP_API_KEY is not set — the server entry has no Authorization header.");
-  }
-  info("Restart your MCP client to pick up the new server.");
+  info(
+    "Restart your MCP client to pick up the new server. First use will prompt an OAuth " +
+      "login in the browser — this can't be completed in a non-interactive session.",
+  );
   info('Try: "Show me the schema of agent_memories and how many memories each team has."');
 }
 
